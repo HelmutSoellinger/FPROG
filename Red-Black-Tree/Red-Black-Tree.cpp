@@ -6,187 +6,166 @@
 #include <algorithm>
 #include <functional>
 
-// Persistent Red-Black Tree Node
-struct Node {
-    int color;  // 0 - Black, 1 - Red
-    std::string key;
-    Node* left;
-    Node* right;
-    Node* parent;
+class ImmutableRBTree {
+public:
+    struct Node {
+        int color;  // 0 - Black, 1 - Red
+        std::string key;
+        const Node* left;
+        const Node* right;
+        const Node* parent;
+
+        Node(int color, const std::string& key, const Node* left = nullptr, const Node* right = nullptr, const Node* parent = nullptr)
+            : color(color), key(key), left(left), right(right), parent(parent) {}
+    };
+
+    static const Node* empty() { return nullptr; }
+
+    template<typename T>
+    static const Node* insert(const Node* tree, const T& key);
+
+    template<typename T>
+    static void inorderTraversal(const Node* tree, std::vector<T>& result);
+
+private:
+    static const Node* newNode(const std::string& key);
+    static const Node* leftRotate(const Node* x);
+    static const Node* rightRotate(const Node* x);
+    static const Node* fixInsert(const Node* k);
 };
 
-// Persistent Red-Black Tree
-class RBTree {
-public:
-    Node* root;
+template<typename T>
+const ImmutableRBTree::Node* ImmutableRBTree::insert(const ImmutableRBTree::Node* tree, const T& key) {
+    auto node = newNode(key);
+    auto y = nullptr;
+    auto x = tree;
 
-    RBTree() : root(nullptr) {}
+    while (x != nullptr) {
+        y = x;
+        if (node->key < x->key) {
+            x = x->left;
+        }
+        else if (node->key > x->key) {
+            x = x->right;
+        }
+        else {
+            return tree; // Key already exists
+        }
+    }
 
-    // Helper function to create a new node
-    static Node* newNode(const std::string& key) {
-        Node* node = new Node();
-        node->color = 1;  // New node is always red
-        node->key = key;
-        node->left = nullptr;
-        node->right = nullptr;
-        node->parent = nullptr;
+    node->parent = y;
+    if (y == nullptr) {
         return node;
     }
+    else if (node->key < y->key) {
+        return new ImmutableRBTree::Node(y->color, y->key, node, y->right, y->parent);
+    }
+    else {
+        return new ImmutableRBTree::Node(y->color, y->key, y->left, node, y->parent);
+    }
+}
 
-    // Left rotation
-    void leftRotate(Node* x) {
-        Node* y = x->right;
-        x->right = y->left;
-        if (y->left != nullptr) {
-            y->left->parent = x;
-        }
-        y->parent = x->parent;
-        if (x->parent == nullptr) {
-            root = y;
-        }
-        else if (x == x->parent->left) {
-            x->parent->left = y;
-        }
-        else {
-            x->parent->right = y;
-        }
-        y->left = x;
-        x->parent = y;
+template<typename T>
+void ImmutableRBTree::inorderTraversal(const ImmutableRBTree::Node* tree, std::vector<T>& result) {
+    if (tree != nullptr) {
+        inorderTraversal(tree->left, result);
+        result.push_back(tree->key);
+        inorderTraversal(tree->right, result);
+    }
+}
+
+const ImmutableRBTree::Node* ImmutableRBTree::newNode(const std::string& key) {
+    return new ImmutableRBTree::Node(1, key, nullptr, nullptr, nullptr);
+}
+
+const ImmutableRBTree::Node* ImmutableRBTree::leftRotate(const ImmutableRBTree::Node* x) {
+    auto y = x->right;
+    auto new_x = new ImmutableRBTree::Node(x->color, x->key, x->left, y->left, x->parent);
+    auto new_y = new ImmutableRBTree::Node(y->color, y->key, new_x, y->right, y->parent);
+
+    if (x->parent == nullptr) {
+        return new_y;
+    }
+    else if (x == x->parent->left) {
+        x->parent->left = new_y;
+    }
+    else {
+        x->parent->right = new_y;
     }
 
-    // Right rotation
-    void rightRotate(Node* x) {
-        Node* y = x->left;
-        x->left = y->right;
-        if (y->right != nullptr) {
-            y->right->parent = x;
-        }
-        y->parent = x->parent;
-        if (x->parent == nullptr) {
-            root = y;
-        }
-        else if (x == x->parent->right) {
-            x->parent->right = y;
-        }
-        else {
-            x->parent->left = y;
-        }
-        y->right = x;
-        x->parent = y;
-    }
+    return new_y;
+}
 
-    // Fix the tree after insertion
-    void fixInsert(Node* k) {
-        Node* u;
-        while (k->parent != nullptr && k->parent->color == 1) {
-            if (k->parent == k->parent->parent->right) {
-                u = k->parent->parent->left;
-                if (u != nullptr && u->color == 1) {
-                    u->color = 0;
-                    k->parent->color = 0;
-                    k->parent->parent->color = 1;
-                    k = k->parent->parent;
-                }
-                else {
-                    if (k == k->parent->left) {
-                        k = k->parent;
-                        rightRotate(k);
-                    }
-                    if (k->parent->parent != nullptr) {
-                        k->parent->color = 0;
-                        k->parent->parent->color = 1;
-                        leftRotate(k->parent->parent);
-                    }
-                }
+const ImmutableRBTree::Node* ImmutableRBTree::rightRotate(const ImmutableRBTree::Node* x) {
+    auto y = x->left;
+    x->left = y->right;
+    if (y->right != nullptr) {
+        y->right->parent = x;
+    }
+    y->parent = x->parent;
+    if (x->parent == nullptr) {
+        return y;
+    }
+    else if (x == x->parent->right) {
+        x->parent->right = y;
+    }
+    else {
+        x->parent->left = y;
+    }
+    y->right = x;
+    x->parent = y;
+    return y;
+}
+
+const ImmutableRBTree::Node* ImmutableRBTree::fixInsert(const ImmutableRBTree::Node* k) {
+    ImmutableRBTree::Node* u;
+    while (k->parent != nullptr && k->color == 1) {
+        if (k->parent == k->parent->right) {
+            u = k->parent->left;
+            if (u != nullptr && u->color == 1) {
+                u->color = 0;
+                k->parent->color = 0;
+                k->parent->parent->color = 1;
+                k = k->parent->parent;
             }
             else {
-                u = k->parent->parent->right;
-                if (u != nullptr && u->color == 1) {
-                    u->color = 0;
+                if (k == k->parent->left) {
+                    k = k->parent;
+                    k = ImmutableRBTree::rightRotate(k);
+                }
+                if (k->parent->parent != nullptr) {
                     k->parent->color = 0;
                     k->parent->parent->color = 1;
-                    k = k->parent->parent;
-                }
-                else {
-                    if (k == k->parent->right) {
-                        k = k->parent;
-                        leftRotate(k);
-                    }
-                    if (k->parent->parent != nullptr) {
-                        k->parent->color = 0;
-                        k->parent->parent->color = 1;
-                        rightRotate(k->parent->parent);
-                    }
+                    k->parent = ImmutableRBTree::leftRotate(k->parent);
                 }
             }
-            if (k == root) {
-                break;
-            }
-        }
-        if (root != nullptr) {
-            root->color = 0;
-        }
-    }
-
-
-    // Insert a new node
-    void insert(const std::string& key) {
-        Node* node = newNode(key);
-        Node* y = nullptr;
-        Node* x = root;
-
-        while (x != nullptr) {
-            y = x;
-            if (node->key < x->key) {
-                x = x->left;
-            }
-            else if (node->key > x->key) {
-                x = x->right;
-            }
-            else { // Key already exists
-                // Instead of inserting, we could just return
-                // Or we could keep a count of occurrences
-                return;
-            }
-        }
-
-        node->parent = y;
-        if (y == nullptr) {
-            root = node;
-        }
-        else if (node->key < y->key) {
-            y->left = node;
         }
         else {
-            y->right = node;
-        }
-
-        if (node->parent == nullptr) {
-            node->color = 0;
-            return;
-        }
-
-        if (node->parent->parent == nullptr) {
-            return;
-        }
-
-        fixInsert(node);
-    }
-
-
-    // Inorder traversal to get sorted list of keys
-    void inorderTraversal(std::vector<std::string>& result) {
-        std::function<void(Node*)> traverse = [&](Node* node) {
-            if (node != nullptr) {
-                traverse(node->left);
-                result.push_back(node->key);
-                traverse(node->right);
+            u = k->parent->right;
+            if (u != nullptr && u->color == 1) {
+                u->color = 0;
+                k->parent->color = 0;
+                k->parent->parent->color = 1;
+                k = k->parent->parent;
             }
-            };
-        traverse(root);
+            else {
+                if (k == k->parent->right) {
+                    k = k->parent;
+                    k = ImmutableRBTree::leftRotate(k);
+                }
+                if (k->parent->parent != nullptr) {
+                    k->parent->color = 0;
+                    k->parent->parent->color = 1;
+                    k->parent = ImmutableRBTree::rightRotate(k->parent);
+                }
+            }
+        }
+        if (k == nullptr) {
+            break;
+        }
     }
-};
-
+    return k;
+}
 // Function to read the text file
 std::string readFile(const std::string& filename) {
     std::ifstream file(filename);
@@ -216,10 +195,11 @@ std::vector<std::string> tokenizeText(const std::string& text) {
 }
 
 // Function to insert unique words into the RBTree
-void insertUniqueWords(RBTree& tree, const std::vector<std::string>& tokens) {
+ImmutableRBTree::Node* insertUniqueWords(ImmutableRBTree::Node* tree, const std::vector<std::string>& tokens) {
     for (const auto& word : tokens) {
-        tree.insert(word);
+        tree = ImmutableRBTree::insert(tree, word);
     }
+    return tree;
 }
 
 // Function to write sorted list to file
@@ -232,24 +212,12 @@ void writeToFile(const std::vector<std::string>& sortedList, const std::string& 
 }
 
 int main() {
-    // Read the text file
-    std::string text = readFile("war_and_peace.txt");
-
-    // Tokenize the text
-    std::vector<std::string> tokens = tokenizeText(text);
-
-    // Create and populate the RBTree
-    RBTree tree;
-    insertUniqueWords(tree, tokens);
-
-    // Get sorted list from RBTree
+    auto text = readFile("war_and_peace.txt");
+    auto tokens = tokenizeText(text);
+    auto tree = insertUniqueWords(ImmutableRBTree::empty(), tokens);
     std::vector<std::string> sortedList;
-    tree.inorderTraversal(sortedList);
-
-    // Write sorted list to file
+    ImmutableRBTree::inorderTraversal(tree, sortedList);
     writeToFile(sortedList, "output.txt");
-
-    std::cout << "Processing completed. Sorted list written to output.txt." << std::endl;
 
     return 0;
 }

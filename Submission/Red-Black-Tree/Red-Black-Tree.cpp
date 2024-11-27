@@ -5,8 +5,9 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <functional>
 
-// Red-Black Tree Node (Immutable)
+// Node Structure
 struct Node {
     const int color;  // 0 - Black, 1 - Red
     const std::string key;
@@ -17,100 +18,95 @@ struct Node {
         : color(c), key(k), left(l), right(r) {}
 };
 
-// Persistent Red-Black Tree
+// Create a new Node
+auto createNode = [](const std::string& key, int color, const Node* left = nullptr, const Node* right = nullptr) -> const Node* {
+    return new Node(key, color, left, right);
+};
+
+// Recursive Insertion
+auto insertRecursive = [](const auto& self, const Node* current, const std::string& key) -> const Node* {
+    if (!current) return createNode(key, 1); // New node is red
+    if (key < current->key) {
+        return createNode(current->key, current->color, self(self, current->left, key), current->right);
+    } else if (key > current->key) {
+        return createNode(current->key, current->color, current->left, self(self, current->right, key));
+    }
+    return current; // Key already exists
+};
+
+// Fix Violations after Insertion
+auto fixInsert = [](const Node* node, const Node* parent) -> const Node* {
+    if (!node || !parent || parent->color == 0) return node;
+
+    const Node* grandparent = parent->left == node ? parent->left : parent->right;
+    const Node* uncle = (grandparent && grandparent->left == parent) ? grandparent->right : grandparent->left;
+
+    if (uncle && uncle->color == 1) {
+        return createNode(grandparent->key, 1,
+                          createNode(parent->key, 0, parent->left, parent->right),
+                          createNode(uncle->key, 0, uncle->left, uncle->right));
+    }
+
+    return node;
+};
+
+// Rotations
+auto leftRotate = [](const Node* x) -> const Node* {
+    const Node* y = x->right;
+    return createNode(y->key, x->color, createNode(x->key, x->color, x->left, y->left), y->right);
+};
+
+auto rightRotate = [](const Node* x) -> const Node* {
+    const Node* y = x->left;
+    return createNode(y->key, x->color, y->left, createNode(x->key, x->color, y->right, x->right));
+};
+
+// In-order Traversal
+auto inorderTraversal = [](const auto& self, const Node* node) -> std::vector<std::string> {
+    if (!node) return {};
+    std::vector<std::string> left = self(self, node->left);
+    left.push_back(node->key);
+    std::vector<std::string> right = self(self, node->right);
+    left.insert(left.end(), right.begin(), right.end());
+    return left;
+};
+
 class RBTree {
 public:
     const Node* root;
 
-    // Constructor
     RBTree() : root(nullptr) {}
 
-    // Functional insertion: returns a new tree
     RBTree insert(const std::string& key) const {
-        // Lambda for recursive insertion
-        auto insertRecursive = [&](const auto& self, const Node* current, const std::string& key) -> const Node* {
-            if (!current) return new Node(key, 1); // New node is red
-            if (key < current->key) {
-                return new Node(current->key, current->color, self(self, current->left, key), current->right);
-            } else if (key > current->key) {
-                return new Node(current->key, current->color, current->left, self(self, current->right, key));
-            }
-            return current; // Key already exists
-        };
-
-        // Apply recursive insertion
+        // Recursive insertion to create a new root
         const Node* newRoot = insertRecursive(insertRecursive, root, key);
 
-        // Lambda for fixing violations
-        auto fixInsert = [&](const Node* node, const Node* parent) -> const Node* {
-            if (!node || !parent || parent->color == 0) return node;
+        // Fix any violations in the tree structure
+        if (newRoot) {
+            newRoot = fixInsert(newRoot, nullptr); // Call fixInsert with the correct arguments
+        }
 
-            // Get sibling and grandparent
-            const Node* grandparent = parent->left == node ? parent->left : parent->right;
-            const Node* uncle = (grandparent && grandparent->left == parent) ? grandparent->right : grandparent->left;
-
-            // Case: Recolor
-            if (uncle && uncle->color == 1) {
-                return new Node(grandparent->key, 1,
-                                new Node(parent->key, 0, parent->left, parent->right),
-                                new Node(uncle->key, 0, uncle->left, uncle->right));
-            }
-
-            // Case: Rotations
-            if (node == parent->right && parent == grandparent->left) return leftRotate(parent);
-            if (node == parent->left && parent == grandparent->right) return rightRotate(parent);
-
-            return node;
-        };
-
-        // Apply fixes if necessary
-        if (newRoot) newRoot = fixInsert(newRoot, nullptr);
-
-        // Return the new tree
+        // Return a new tree with the updated root
         RBTree newTree;
         newTree.root = newRoot;
         return newTree;
     }
 
-    // In-order Traversal
-    std::vector<std::string> inorderTraversal() const {
-        // Lambda for recursive traversal
-        auto traverse = [&](const auto& self, const Node* node) -> std::vector<std::string> {
-            if (!node) return {};
-            std::vector<std::string> left = self(self, node->left);
-            left.push_back(node->key);
-            std::vector<std::string> right = self(self, node->right);
-            left.insert(left.end(), right.begin(), right.end());
-            return left;
-        };
-
-        return traverse(traverse, root);
-    }
-
-private:
-    // Left rotation
-    const Node* leftRotate(const Node* x) const {
-        const Node* y = x->right;
-        return new Node(y->key, x->color, new Node(x->key, x->color, x->left, y->left), y->right);
-    }
-
-    // Right rotation
-    const Node* rightRotate(const Node* x) const {
-        const Node* y = x->left;
-        return new Node(y->key, x->color, y->left, new Node(x->key, x->color, y->right, x->right));
+    std::vector<std::string> inorder() const {
+        return inorderTraversal(inorderTraversal, root);
     }
 };
 
-// Function to read the text file
-std::string readFile(const std::string& filename) {
+// File Reading
+auto readFile = [](const std::string& filename) -> std::string {
     std::ifstream file(filename);
     std::stringstream buffer;
     buffer << file.rdbuf();
     return buffer.str();
-}
+};
 
-// Tokenization with a lambda
-std::vector<std::string> tokenizeText(const std::string& text) {
+// Tokenization
+auto tokenizeText = [](const std::string& text) -> std::vector<std::string> {
     std::istringstream iss(text);
     std::vector<std::string> tokens;
     std::string word;
@@ -124,37 +120,30 @@ std::vector<std::string> tokenizeText(const std::string& text) {
         if (!word.empty()) tokens.push_back(word);
     }
     return tokens;
-}
+};
 
-// Function to write the sorted list to a file
-void writeToFile(const std::vector<std::string>& sortedList, const std::string& filename) {
+// File Writing
+auto writeToFile = [](const std::vector<std::string>& sortedList, const std::string& filename) {
     std::ofstream outFile(filename);
     for (const auto& word : sortedList) {
         outFile << word << '\n';
     }
     outFile.close();
-}
+};
 
+// Main Function
 int main() {
-    // Read the text file
     const std::string text = readFile("war_and_peace.txt");
-
-    // Tokenize the text
     const auto tokens = tokenizeText(text);
 
-    // Create and populate the tree functionally
     RBTree tree = std::accumulate(tokens.begin(), tokens.end(), RBTree(),
                                   [](const RBTree& acc, const std::string& word) {
                                       return acc.insert(word);
                                   });
 
-    // Perform an inorder traversal to retrieve sorted keys
-    const auto sortedList = tree.inorderTraversal();
-
-    // Write the sorted list to a file
+    const auto sortedList = tree.inorder();
     writeToFile(sortedList, "output.txt");
 
     std::cout << "Processing completed. Sorted list written to output.txt." << std::endl;
-
     return 0;
 }

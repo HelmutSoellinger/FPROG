@@ -5,166 +5,153 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <functional>
 
-// Red-Black Tree Node (Immutable)
+// Immutable Node structure
 struct Node {
-    const int color;  // 0 - Black, 1 - Red
+    const int color; // 0 - Black, 1 - Red
     const std::string key;
     const Node* left;
     const Node* right;
 
     Node(const std::string& k, int c, const Node* l = nullptr, const Node* r = nullptr)
-        : key(k), color(c), left(l), right(r) {}
+        : color(c), key(k), left(l), right(r) {}
 };
 
-// Persistent Red-Black Tree
-class RBTree {
-public:
-    const Node* root;
-
-    // Constructor
-    RBTree() : root(nullptr) {}
-
-    // Functional insertion: returns a new tree
-    RBTree insert(const std::string& key) const {
-        RBTree newTree;
-        newTree.root = insertRecursive(root, key);
-        if (newTree.root) {
-            newTree.root = fixInsert(newTree.root, nullptr);
-        }
-        return newTree;
-    }
-
-    void inorderTraversalHelper(const Node* node, std::vector<std::string>& result) const {
-        if (node) {
-            inorderTraversalHelper(node->left, result);
-            result.push_back(node->key);
-            inorderTraversalHelper(node->right, result);
-        }
-    }
-
-    std::vector<std::string> inorderTraversal() const {
-        std::vector<std::string> result;
-        inorderTraversalHelper(root, result);
-        return result;
-    }
-
-private:
-    // Recursive insertion: creates a new subtree
-    const Node* insertRecursive(const Node* current, const std::string& key) const {
-        if (!current) {
-            return new Node(key, 1); // New node is red
-        }
-        if (key < current->key) {
-            return new Node(current->key, current->color,
-                insertRecursive(current->left, key), current->right);
-        }
-        else if (key > current->key) {
-            return new Node(current->key, current->color,
-                current->left, insertRecursive(current->right, key));
-        }
-        return current; // Key already exists, return the current node
-    }
-
-    // Fix violations after insertion (ensures tree balance)
-    const Node* fixInsert(const Node* node, const Node* parent) const {
-        if (!node || !parent || parent->color == 0) {
-            return node;
-        }
-
-        // Get sibling node
-        const Node* grandparent = parent->left == node ? parent->left : parent->right;
-        const Node* uncle = (grandparent && grandparent->left == parent) ? grandparent->right : grandparent->left;
-
-        // Case: Uncle is red (Recolor)
-        if (uncle && uncle->color == 1) {
-            parent = new Node(parent->key, 0, parent->left, parent->right);
-            const Node* newUncle = new Node(uncle->key, 0, uncle->left, uncle->right);
-            const Node* newGrandparent = new Node(grandparent->key, 1, parent, newUncle);
-            return newGrandparent;
-        }
-
-        // Case: Rotation needed (adjust structure)
-        if (node == parent->right && parent == grandparent->left) {
-            return leftRotate(parent);
-        }
-        else if (node == parent->left && parent == grandparent->right) {
-            return rightRotate(parent);
-        }
-
-        return node; // No changes needed
-    }
-
-    // Left rotation
-    const Node* leftRotate(const Node* x) const {
-        const Node* y = x->right;
-        return new Node(y->key, x->color, new Node(x->key, x->color, x->left, y->left), y->right);
-    }
-
-    // Right rotation
-    const Node* rightRotate(const Node* x) const {
-        const Node* y = x->left;
-        return new Node(y->key, x->color, y->left, new Node(x->key, x->color, y->right, x->right));
-    }
+// Create a new node
+auto createNode = [](const std::string& key, int color, const Node* left = nullptr, const Node* right = nullptr) -> const Node* {
+    return new Node(key, color, left, right);
 };
 
-// Function to read the text file (pure function if no side effects are introduced here)
-std::string readFile(const std::string& filename) {
+// Left rotation
+auto leftRotate = [](const Node* x) -> const Node* {
+    const Node* y = x->right;
+    return createNode(y->key, x->color,
+                      createNode(x->key, 1, x->left, y->left), y->right);
+};
+
+// Right rotation
+auto rightRotate = [](const Node* x) -> const Node* {
+    const Node* y = x->left;
+    return createNode(y->key, x->color,
+                      y->left, createNode(x->key, 1, y->right, x->right));
+};
+
+// Recursive insertion
+auto insert = [](const auto& self, const Node* root, const std::string& key) -> const Node* {
+    if (!root) return createNode(key, 1); // New nodes are red by default
+
+    if (key < root->key)
+        return createNode(root->key, root->color, self(self, root->left, key), root->right);
+    if (key > root->key)
+        return createNode(root->key, root->color, root->left, self(self, root->right, key));
+
+    return root; // Key already exists
+};
+
+// Fix Red-Black Tree violations
+auto fixInsert = [](const Node* node) -> const Node* {
+    if (!node) return node;
+
+    // If the left child and its left child are red, perform right rotation
+    if (node->left && node->left->color == 1 && node->left->left && node->left->left->color == 1) {
+        return rightRotate(createNode(node->key, 1, node->left, node->right));
+    }
+
+    // If the right child and its right child are red, perform left rotation
+    if (node->right && node->right->color == 1 && node->right->right && node->right->right->color == 1) {
+        return leftRotate(createNode(node->key, 1, node->left, node->right));
+    }
+
+    // If the left child and its right child are red, perform left-right rotation
+    if (node->left && node->left->color == 1 && node->left->right && node->left->right->color == 1) {
+        return rightRotate(createNode(node->key, 1, leftRotate(node->left), node->right));
+    }
+
+    // If the right child and its left child are red, perform right-left rotation
+    if (node->right && node->right->color == 1 && node->right->left && node->right->left->color == 1) {
+        return leftRotate(createNode(node->key, 1, node->left, rightRotate(node->right)));
+    }
+
+    return node; // No violations
+};
+
+// Insert with fix
+auto insertWithFix = [](const auto& insertFn, const auto& fixFn, const Node* root, const std::string& key) -> const Node* {
+    auto newRoot = insertFn(insertFn, root, key);
+    newRoot = fixFn(newRoot);  // Only pass `newRoot` to `fixFn`
+
+    // Ensure the root is black
+    if (newRoot && newRoot->color == 1) {
+        newRoot = createNode(newRoot->key, 0, newRoot->left, newRoot->right);
+    }
+
+    return newRoot;
+};
+
+// In-order traversal
+auto inorderTraversal = [](const auto& self, const Node* root) -> std::vector<std::string> {
+    if (!root) return {};
+    auto left = self(self, root->left);
+    left.push_back(root->key);
+    auto right = self(self, root->right);
+    left.insert(left.end(), right.begin(), right.end());
+    return left;
+};
+
+// Read text from a file
+auto readFile = [](const std::string& filename) -> std::string {
     std::ifstream file(filename);
     std::stringstream buffer;
     buffer << file.rdbuf();
     return buffer.str();
-}
+};
 
-// Pure function to tokenize the text
-std::vector<std::string> tokenizeText(const std::string& text) {
+// Tokenize the text
+auto tokenizeText = [](const std::string& text) -> std::vector<std::string> {
     std::istringstream iss(text);
     std::vector<std::string> tokens;
     std::string word;
 
+    auto isAlnum = [](char c) { return std::isalnum(c); };
+    auto toLower = [](unsigned char c) { return std::tolower(c); };
+
     while (iss >> word) {
-        std::transform(word.begin(), word.end(), word.begin(),
-            [](unsigned char c) { return std::tolower(c); });
-        word.erase(std::remove_if(word.begin(), word.end(),
-            [](char c) { return !std::isalnum(c); }),
-            word.end());
-        if (!word.empty()) {
-            tokens.push_back(word);
-        }
+        std::transform(word.begin(), word.end(), word.begin(), toLower);
+        word.erase(std::remove_if(word.begin(), word.end(), [&](char c) { return !isAlnum(c); }), word.end());
+        if (!word.empty()) tokens.push_back(word);
     }
     return tokens;
-}
+};
 
-// Function to write the sorted list to a file (side-effect isolated)
-void writeToFile(const std::vector<std::string>& sortedList, const std::string& filename) {
+// Write sorted list to a file
+auto writeToFile = [](const std::vector<std::string>& sortedList, const std::string& filename) {
     std::ofstream outFile(filename);
     for (const auto& word : sortedList) {
         outFile << word << '\n';
     }
     outFile.close();
-}
+};
 
 int main() {
-    // Read the text file
+    // Read text from file
     const std::string text = readFile("war_and_peace.txt");
 
-    // Tokenize the text
+    // Tokenize text into individual words
     const auto tokens = tokenizeText(text);
 
-    // Create and populate the tree functionally
-    RBTree tree;
-    tree = std::accumulate(tokens.begin(), tokens.end(), tree,
-        [](const RBTree& acc, const std::string& word) {
-            return acc.insert(word);
-        });
+    // Use accumulate to construct the Red-Black Tree
+    const Node* tree = std::accumulate(tokens.begin(), tokens.end(), static_cast<const Node*>(nullptr),
+                                       [](const Node* acc, const std::string& word) {
+                                           return insertWithFix(insert, fixInsert, acc, word);
+                                       });
 
-    // Perform an inorder traversal to retrieve sorted keys
-    const auto sortedList = tree.inorderTraversal();
+    // Perform in-order traversal to get sorted list of words
+    const auto sortedList = inorderTraversal(inorderTraversal, tree);
 
-    // Write the sorted list to a file
+    // Write the sorted list to the output file
     writeToFile(sortedList, "output.txt");
 
     std::cout << "Processing completed. Sorted list written to output.txt." << std::endl;
-
     return 0;
 }
